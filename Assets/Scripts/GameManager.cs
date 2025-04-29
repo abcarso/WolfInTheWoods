@@ -25,6 +25,7 @@ public class GameManager : MonoBehaviour
         DontDestroyOnLoad(gameObject); 
 
         player = FindFirstObjectByType<FirstPersonController>();
+        Debug.Log($"[GM] Player in Awake: {(player ? player.name : "null")}");
 
         // Make sure the panels are inactive
         losePanel.SetActive(false);
@@ -80,8 +81,9 @@ public class GameManager : MonoBehaviour
     {
         if (player != null)
         {
-            player.ResetPlayer();
             losePanel.SetActive(false);
+            winPanel.SetActive(false);
+            player.ResetPlayer();
         }
         else
         {
