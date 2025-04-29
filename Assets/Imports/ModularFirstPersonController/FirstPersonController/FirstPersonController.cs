@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public class FirstPersonController : MonoBehaviour
 {
@@ -9,6 +10,10 @@ public class FirstPersonController : MonoBehaviour
     private Vector3 startingPosition;
     private Quaternion startingRotation;
     #endregion
+
+    [Header("Dialog UI")]
+    public GameObject dialogBox;            
+    public TextMeshProUGUI dialogText;
 
     #region Camera
     public Camera playerCamera;
@@ -75,6 +80,7 @@ public class FirstPersonController : MonoBehaviour
 
     private CanvasGroup hungerBarCG;
     private float hungerRemaining;
+    private float prevHungerPercent = 1f;
     private bool hungerPenalty = false;
     #endregion
 
@@ -136,6 +142,8 @@ public class FirstPersonController : MonoBehaviour
         hungerBarCG  = hungerBarGroup.GetComponent<CanvasGroup>();
         hungerBarBG.gameObject.SetActive(true);
         hungerBar.gameObject.SetActive(true);
+
+        dialogBox.SetActive(false);
     }
 
     private void Update()
@@ -144,6 +152,7 @@ public class FirstPersonController : MonoBehaviour
         HandleZoom();
         HandleSprint();
         HandleHunger();
+        WarnWhenHungry();
         if (enableHeadBob) HeadBob();
         HandleFootsteps();
         HandleBreathingLoop();
@@ -251,6 +260,20 @@ public class FirstPersonController : MonoBehaviour
         hungerBar.fillAmount = percent;
     }
 
+    private void WarnWhenHungry()                                   // ADD
+    {
+        float pct = hungerRemaining / startingHunger;
+
+        // 40 percent
+        if (prevHungerPercent >= 0.40f && pct < 0.40f)
+            ShowDialog("I could use some food.", 3f);
+
+        // 20 percent
+        else if (prevHungerPercent >= 0.20f && pct < 0.20f)
+            ShowDialog("So hungry...", 3f);
+
+        prevHungerPercent = pct;
+    }
     private void HandleMovement()
     {
         if (!playerCanMove) return;
@@ -374,5 +397,23 @@ public class FirstPersonController : MonoBehaviour
         // Reset position
         transform.position = startingPosition;
         transform.rotation = startingRotation;
+    }
+
+
+    // Need to run through multipe frames
+    public void ShowDialog(string message, float duration = 4f) 
+    {
+        if (!gameObject.activeInHierarchy) return;    // safety
+        StartCoroutine(DialogRoutine(message, duration));
+    }
+
+    private IEnumerator DialogRoutine(string message, float duration) 
+    {
+        if (dialogBox == null || dialogText == null) yield break;
+
+        dialogText.text = message;   // Change the text
+        dialogBox.SetActive(true);   // Show ui
+        yield return new WaitForSeconds(duration);
+        dialogBox.SetActive(false);  // Hide ui
     }
 }

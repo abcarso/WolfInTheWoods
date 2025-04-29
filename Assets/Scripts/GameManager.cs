@@ -25,7 +25,6 @@ public class GameManager : MonoBehaviour
         DontDestroyOnLoad(gameObject); 
 
         player = FindFirstObjectByType<FirstPersonController>();
-        Debug.Log($"[GM] Player in Awake: {(player ? player.name : "null")}");
 
         // Make sure the panels are inactive
         losePanel.SetActive(false);
@@ -73,6 +72,7 @@ public class GameManager : MonoBehaviour
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
         ambientaAudio.SetActive(true);
+        player.ShowDialog("The Wolf is out here somewhere. I should find it.", 7f);
     }
 
 
