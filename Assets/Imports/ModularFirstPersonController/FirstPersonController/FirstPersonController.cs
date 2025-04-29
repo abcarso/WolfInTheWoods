@@ -18,8 +18,6 @@ public class FirstPersonController : MonoBehaviour
     public float mouseSensitivity = 2f;
     public float maxLookAngle = 50f;
     private float yaw, pitch;
-
-    public bool lockCursor = true;
     public bool crosshair = true;
     public Sprite crosshairImage;
     public Color crosshairColor = Color.white;
@@ -37,7 +35,9 @@ public class FirstPersonController : MonoBehaviour
     public bool playerCanMove = true;
     public float walkSpeed = 5f;
     public float maxVelocityChange = 10f;
+    #endregion
 
+    #region Sprint
     public bool enableSprint = true;
     public bool unlimitedSprint = false;
     public KeyCode sprintKey = KeyCode.LeftShift;
@@ -73,9 +73,9 @@ public class FirstPersonController : MonoBehaviour
     public float hungerBarWidthPercent = .3f;
     public float hungerBarHeightPercent = .015f;
 
+    private CanvasGroup hungerBarCG;
     private float hungerRemaining;
     private bool hungerPenalty = false;
-    private CanvasGroup hungerBarCG;
     #endregion
 
     #region Head Bob
@@ -124,8 +124,6 @@ public class FirstPersonController : MonoBehaviour
 
     private void Start()
     {
-        if (lockCursor)
-            Cursor.lockState = CursorLockMode.Locked;
         if (crosshair)
         {
             crosshairObject.sprite = crosshairImage;
@@ -134,8 +132,8 @@ public class FirstPersonController : MonoBehaviour
         else
             crosshairObject.gameObject.SetActive(false);
 
-        sprintBarCG = GetComponentInChildren<CanvasGroup>();
-        hungerBarCG = GetComponentInChildren<CanvasGroup>();
+        sprintBarCG  = sprintBarGroup.GetComponent<CanvasGroup>();
+        hungerBarCG  = hungerBarGroup.GetComponent<CanvasGroup>();
         hungerBarBG.gameObject.SetActive(true);
         hungerBar.gameObject.SetActive(true);
     }
@@ -215,11 +213,16 @@ public class FirstPersonController : MonoBehaviour
             sprintCooldown = sprintCooldownReset;
         }
 
-        if (useSprintBar && !unlimitedSprint)
+        // UI update 
+        if (useSprintBar && !unlimitedSprint &&
+            sprintBar   && sprintBarCG)
         {
             float percent = sprintRemaining / sprintDuration;
-            sprintBar.transform.localScale = new Vector3(percent, 1, 1);
-            sprintBarCG.alpha = hideBarWhenFull && percent > 0.99f ? 0 : 1;
+
+            sprintBar.fillAmount = percent;
+
+            // Hide when almost full
+            sprintBarCG.alpha = (hideBarWhenFull && percent > 0.99f) ? 0f : 1f;
         }
     }
 
@@ -245,7 +248,7 @@ public class FirstPersonController : MonoBehaviour
 
         // Show hunger left in ui
         float percent = hungerRemaining / startingHunger;
-        hungerBar.transform.localScale = new Vector3(percent, 1, 1);
+        hungerBar.fillAmount = percent;
     }
 
     private void HandleMovement()
@@ -335,25 +338,35 @@ public class FirstPersonController : MonoBehaviour
         hungerBarGroup.SetActive(false);
 
     }
-    public void ResetPlayer()
+
+    public void EnablePlayer()
     {
-        // Let player move again
         enableSprint = true;
         enableHunger = true;
         playerCanMove = true;
         cameraCanMove = true;
+
+        if (sprintBarGroup != null)
+            sprintBarGroup.SetActive(true);
+
+        if (hungerBarGroup != null)
+            hungerBarGroup.SetActive(true);
+    }
+
+    public void ResetPlayer()
+    {
+        // Let player move again
+        EnablePlayer();
 
         // Reset sprinting
         isSprinting = false;
         isSprintCooldown = false;
         sprintRemaining = sprintDuration;
         sprintCooldown = sprintCooldownReset;
-        sprintBarGroup.SetActive(true);
 
         // Reset hunger
         hungerRemaining = startingHunger;
         hungerPenalty = false;
-        hungerBarGroup.SetActive(true);
 
         // Reset movement
         rb.linearVelocity = Vector3.zero;
@@ -361,12 +374,5 @@ public class FirstPersonController : MonoBehaviour
         // Reset position
         transform.position = startingPosition;
         transform.rotation = startingRotation;
-
-
-        if (lockCursor)
-        {
-            Cursor.lockState = CursorLockMode.Locked;
-        }
-        Cursor.visible = false;
     }
 }

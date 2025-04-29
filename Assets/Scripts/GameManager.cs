@@ -3,8 +3,12 @@ using UnityEngine;
 public class GameManager : MonoBehaviour
 {
     public static GameManager Instance; 
+    public GameObject startMenu;
     public GameObject losePanel;
     public GameObject winPanel;
+    public GameObject ambientaAudio;
+
+    private bool isGameStarted = false;
 
     private FirstPersonController player;
 
@@ -25,7 +29,51 @@ public class GameManager : MonoBehaviour
         // Make sure the panels are inactive
         losePanel.SetActive(false);
         winPanel.SetActive(false);
+        // Keep audio off until game starts
+        ambientaAudio.SetActive(false);
     }
+
+    private void Start()
+    {
+        if (player != null)
+        {
+            player.DisablePlayer();
+        }
+    }
+
+    private void Update()
+    {
+        if (!isGameStarted)
+        {
+            // Freeze time while on Start Menu
+            Time.timeScale = 0f;
+        }
+        else
+        {
+            Time.timeScale = 1f;
+        }
+    }
+    
+    // Unpause Game
+    public void StartGame()
+    {
+        if (startMenu != null)
+        {
+            startMenu.SetActive(false);
+        }
+
+        isGameStarted = true;
+
+        if (player != null)
+        {
+            player.EnablePlayer();
+        }
+
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+        ambientaAudio.SetActive(true);
+    }
+
 
     // Returns game to original state (doesn't fix apples yet)
     public void ResetGame()
