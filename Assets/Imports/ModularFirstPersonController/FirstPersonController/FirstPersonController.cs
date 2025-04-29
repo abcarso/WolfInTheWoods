@@ -1,25 +1,19 @@
-﻿// CHANGE LOG
-// 
-// CHANGES || version VERSION
-//
-
-// ───────────────────────────────────────────────────────────────────────────────
-// FirstPersonController.cs  –  Runtime + Custom Inspector (No Jump, No Crouch)
-// ───────────────────────────────────────────────────────────────────────────────
-
-// FirstPersonController.cs - Runtime + Custom Inspector - Clean Version
-
-using System.Collections;
+﻿using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
-
-#if UNITY_EDITOR
-using UnityEditor;
-#endif
+using TMPro;
 
 public class FirstPersonController : MonoBehaviour
 {
+    # region Player Model
     private Rigidbody rb;
+    private Vector3 startingPosition;
+    private Quaternion startingRotation;
+    #endregion
+
+    [Header("Dialog UI")]
+    public GameObject dialogBox;            
+    public TextMeshProUGUI dialogText;
 
     #region Camera
     public Camera playerCamera;
@@ -29,8 +23,6 @@ public class FirstPersonController : MonoBehaviour
     public float mouseSensitivity = 2f;
     public float maxLookAngle = 50f;
     private float yaw, pitch;
-
-    public bool lockCursor = true;
     public bool crosshair = true;
     public Sprite crosshairImage;
     public Color crosshairColor = Color.white;
@@ -48,7 +40,9 @@ public class FirstPersonController : MonoBehaviour
     public bool playerCanMove = true;
     public float walkSpeed = 5f;
     public float maxVelocityChange = 10f;
+    #endregion
 
+    #region Sprint
     public bool enableSprint = true;
     public bool unlimitedSprint = false;
     public KeyCode sprintKey = KeyCode.LeftShift;
@@ -60,6 +54,7 @@ public class FirstPersonController : MonoBehaviour
 
     public bool useSprintBar = true;
     public bool hideBarWhenFull = true;
+    public GameObject sprintBarGroup;
     public Image sprintBarBG;
     public Image sprintBar;
     public float sprintBarWidthPercent = .3f;
@@ -76,14 +71,17 @@ public class FirstPersonController : MonoBehaviour
     public bool enableHunger = true;
     public float hungerLossRate = 3f;
     public float startingHunger = 100;
+    public float hungerAdded = 50;
+    public GameObject hungerBarGroup;
     public Image hungerBarBG;
     public Image hungerBar;
     public float hungerBarWidthPercent = .3f;
     public float hungerBarHeightPercent = .015f;
 
-    private float hungerRemaining;
-    private bool hungerPenalty = false;
     private CanvasGroup hungerBarCG;
+    private float hungerRemaining;
+    private float prevHungerPercent = 1f;
+    private bool hungerPenalty = false;
     #endregion
 
     #region Head Bob
@@ -109,15 +107,17 @@ public class FirstPersonController : MonoBehaviour
     private bool breathPlaying = false;
     #endregion
 
-    public GameObject losePanel;
-
     // Unity Methods
     private void Awake()
     {
         rb = GetComponent<Rigidbody>();
         crosshairObject = GetComponentInChildren<Image>();
+        Cursor.visible = false;
         playerCamera.fieldOfView = fov;
         jointOriginalPos = joint.localPosition;
+
+        startingPosition = transform.position;
+        startingRotation = transform.rotation;
 
         if (!unlimitedSprint)
         {
@@ -130,9 +130,6 @@ public class FirstPersonController : MonoBehaviour
 
     private void Start()
     {
-        if (lockCursor)
-            Cursor.lockState = CursorLockMode.Locked;
-
         if (crosshair)
         {
             crosshairObject.sprite = crosshairImage;
@@ -141,10 +138,12 @@ public class FirstPersonController : MonoBehaviour
         else
             crosshairObject.gameObject.SetActive(false);
 
-        sprintBarCG = GetComponentInChildren<CanvasGroup>();
-        hungerBarCG = GetComponentInChildren<CanvasGroup>();
+        sprintBarCG  = sprintBarGroup.GetComponent<CanvasGroup>();
+        hungerBarCG  = hungerBarGroup.GetComponent<CanvasGroup>();
         hungerBarBG.gameObject.SetActive(true);
         hungerBar.gameObject.SetActive(true);
+
+        dialogBox.SetActive(false);
     }
 
     private void Update()
@@ -153,6 +152,7 @@ public class FirstPersonController : MonoBehaviour
         HandleZoom();
         HandleSprint();
         HandleHunger();
+        WarnWhenHungry();
         if (enableHeadBob) HeadBob();
         HandleFootsteps();
         HandleBreathingLoop();
@@ -163,7 +163,7 @@ public class FirstPersonController : MonoBehaviour
         HandleMovement();
     }
 
-    // Core Movement
+    // Player Functions
     private void HandleCamera()
     {
         if (!cameraCanMove) return;
@@ -222,11 +222,16 @@ public class FirstPersonController : MonoBehaviour
             sprintCooldown = sprintCooldownReset;
         }
 
-        if (useSprintBar && !unlimitedSprint)
+        // UI update 
+        if (useSprintBar && !unlimitedSprint &&
+            sprintBar   && sprintBarCG)
         {
             float percent = sprintRemaining / sprintDuration;
-            sprintBar.transform.localScale = new Vector3(percent, 1, 1);
-            sprintBarCG.alpha = hideBarWhenFull && percent > 0.99f ? 0 : 1;
+
+            sprintBar.fillAmount = percent;
+
+            // Hide when almost full
+            sprintBarCG.alpha = (hideBarWhenFull && percent > 0.99f) ? 0f : 1f;
         }
     }
 
@@ -234,6 +239,7 @@ public class FirstPersonController : MonoBehaviour
     {
         if (!enableHunger) return;
 
+        // Hunger decreases with time
         hungerRemaining -= hungerLossRate * Time.deltaTime;
         if (hungerPenalty)
         {
@@ -241,18 +247,33 @@ public class FirstPersonController : MonoBehaviour
             hungerPenalty = false;
         }
 
+        // Player has no hunger
         if (hungerRemaining <= 0)
         {
-            losePanel.SetActive(true);
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+            // Call lose screen
+            GameManager.Instance.LoseGame();
             DisablePlayer();
         }
 
+        // Show hunger left in ui
         float percent = hungerRemaining / startingHunger;
-        hungerBar.transform.localScale = new Vector3(percent, 1, 1);
+        hungerBar.fillAmount = percent;
     }
 
+    private void WarnWhenHungry()                                   // ADD
+    {
+        float pct = hungerRemaining / startingHunger;
+
+        // 40 percent
+        if (prevHungerPercent >= 0.40f && pct < 0.40f)
+            ShowDialog("I could use some food.", 3f);
+
+        // 20 percent
+        else if (prevHungerPercent >= 0.20f && pct < 0.20f)
+            ShowDialog("So hungry...", 3f);
+
+        prevHungerPercent = pct;
+    }
     private void HandleMovement()
     {
         if (!playerCanMove) return;
@@ -274,6 +295,7 @@ public class FirstPersonController : MonoBehaviour
 
     private void HeadBob()
     {
+        // Camera bobs when player is walking
         if (isWalking)
         {
             bobTimer += Time.deltaTime * (isSprinting ? (bobSpeed + sprintSpeed) : bobSpeed);
@@ -288,6 +310,7 @@ public class FirstPersonController : MonoBehaviour
 
     private void HandleFootsteps()
     {
+        // Play footstep audio from an array of audio clips
         if (!audioSource || footstepClips.Length == 0 || !isWalking) return;
 
         footstepTimer += Time.deltaTime;
@@ -302,6 +325,7 @@ public class FirstPersonController : MonoBehaviour
 
     private void HandleBreathingLoop()
     {
+        // Play breathing audio when player is sprinting
         if (!audioSource || !sprintBreathingClip) return;
 
         if (isSprinting && !breathPlaying)
@@ -320,40 +344,76 @@ public class FirstPersonController : MonoBehaviour
 
     public void AddHunger()
     {
-        hungerRemaining = Mathf.Clamp(hungerRemaining + 50, 0, startingHunger);
+        // Add hunger, but don't go above the max
+        hungerRemaining = Mathf.Clamp(hungerRemaining + hungerAdded, 0, startingHunger);
     }
 
     public void DisablePlayer()
     {
+        // Keep the player from moving
         enableSprint = false;
         enableHunger = false;
         playerCanMove = false;
+        cameraCanMove = false;
 
-        sprintBarBG.gameObject.SetActive(false);
-        sprintBar.gameObject.SetActive(false);
-        hungerBarBG.gameObject.SetActive(false);
-        hungerBar.gameObject.SetActive(false);
+        // Make the ui inactive
+        sprintBarGroup.SetActive(false);
+        hungerBarGroup.SetActive(false);
+
+    }
+
+    public void EnablePlayer()
+    {
+        enableSprint = true;
+        enableHunger = true;
+        playerCanMove = true;
+        cameraCanMove = true;
+
+        if (sprintBarGroup != null)
+            sprintBarGroup.SetActive(true);
+
+        if (hungerBarGroup != null)
+            hungerBarGroup.SetActive(true);
+    }
+
+    public void ResetPlayer()
+    {
+        // Let player move again
+        EnablePlayer();
+
+        // Reset sprinting
+        isSprinting = false;
+        isSprintCooldown = false;
+        sprintRemaining = sprintDuration;
+        sprintCooldown = sprintCooldownReset;
+
+        // Reset hunger
+        hungerRemaining = startingHunger;
+        hungerPenalty = false;
+
+        // Reset movement
+        rb.linearVelocity = Vector3.zero;
+        rb.angularVelocity = Vector3.zero;
+        // Reset position
+        transform.position = startingPosition;
+        transform.rotation = startingRotation;
+    }
+
+
+    // Need to run through multipe frames
+    public void ShowDialog(string message, float duration = 4f) 
+    {
+        if (!gameObject.activeInHierarchy) return;    // safety
+        StartCoroutine(DialogRoutine(message, duration));
+    }
+
+    private IEnumerator DialogRoutine(string message, float duration) 
+    {
+        if (dialogBox == null || dialogText == null) yield break;
+
+        dialogText.text = message;   // Change the text
+        dialogBox.SetActive(true);   // Show ui
+        yield return new WaitForSeconds(duration);
+        dialogBox.SetActive(false);  // Hide ui
     }
 }
-
-#if UNITY_EDITOR
-[CustomEditor(typeof(FirstPersonController)), InitializeOnLoad]
-public class FirstPersonControllerEditor : Editor
-{
-    SerializedObject so;
-    FirstPersonController fpc;
-
-    private void OnEnable()
-    {
-        so = new SerializedObject(target);
-        fpc = (FirstPersonController)target;
-    }
-
-    public override void OnInspectorGUI()
-    {
-        so.Update();
-        DrawDefaultInspector();
-        so.ApplyModifiedProperties();
-    }
-}
-#endif

@@ -13,6 +13,7 @@ public class PickupFood : MonoBehaviour
         {
             player.AddHunger();
             Destroy(gameObject);
+            player.ShowDialog("Food. I needed that.", 2f);
         }
     }
 }
