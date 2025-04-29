@@ -1,25 +1,14 @@
-﻿// CHANGE LOG
-// 
-// CHANGES || version VERSION
-//
-
-// ───────────────────────────────────────────────────────────────────────────────
-// FirstPersonController.cs  –  Runtime + Custom Inspector (No Jump, No Crouch)
-// ───────────────────────────────────────────────────────────────────────────────
-
-// FirstPersonController.cs - Runtime + Custom Inspector - Clean Version
-
-using System.Collections;
+﻿using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 
-#if UNITY_EDITOR
-using UnityEditor;
-#endif
-
 public class FirstPersonController : MonoBehaviour
 {
+    # region Player Model
     private Rigidbody rb;
+    private Vector3 startingPosition;
+    private Quaternion startingRotation;
+    #endregion
 
     #region Camera
     public Camera playerCamera;
@@ -60,6 +49,7 @@ public class FirstPersonController : MonoBehaviour
 
     public bool useSprintBar = true;
     public bool hideBarWhenFull = true;
+    public GameObject sprintBarGroup;
     public Image sprintBarBG;
     public Image sprintBar;
     public float sprintBarWidthPercent = .3f;
@@ -76,6 +66,8 @@ public class FirstPersonController : MonoBehaviour
     public bool enableHunger = true;
     public float hungerLossRate = 3f;
     public float startingHunger = 100;
+    public float hungerAdded = 50;
+    public GameObject hungerBarGroup;
     public Image hungerBarBG;
     public Image hungerBar;
     public float hungerBarWidthPercent = .3f;
@@ -109,15 +101,17 @@ public class FirstPersonController : MonoBehaviour
     private bool breathPlaying = false;
     #endregion
 
-    public GameObject losePanel;
-
     // Unity Methods
     private void Awake()
     {
         rb = GetComponent<Rigidbody>();
         crosshairObject = GetComponentInChildren<Image>();
+        Cursor.visible = false;
         playerCamera.fieldOfView = fov;
         jointOriginalPos = joint.localPosition;
+
+        startingPosition = transform.position;
+        startingRotation = transform.rotation;
 
         if (!unlimitedSprint)
         {
@@ -132,7 +126,6 @@ public class FirstPersonController : MonoBehaviour
     {
         if (lockCursor)
             Cursor.lockState = CursorLockMode.Locked;
-
         if (crosshair)
         {
             crosshairObject.sprite = crosshairImage;
@@ -163,7 +156,7 @@ public class FirstPersonController : MonoBehaviour
         HandleMovement();
     }
 
-    // Core Movement
+    // Player Functions
     private void HandleCamera()
     {
         if (!cameraCanMove) return;
@@ -234,6 +227,7 @@ public class FirstPersonController : MonoBehaviour
     {
         if (!enableHunger) return;
 
+        // Hunger decreases with time
         hungerRemaining -= hungerLossRate * Time.deltaTime;
         if (hungerPenalty)
         {
@@ -241,14 +235,15 @@ public class FirstPersonController : MonoBehaviour
             hungerPenalty = false;
         }
 
+        // Player has no hunger
         if (hungerRemaining <= 0)
         {
-            losePanel.SetActive(true);
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+            // Call lose screen
+            GameManager.Instance.LoseGame();
             DisablePlayer();
         }
 
+        // Show hunger left in ui
         float percent = hungerRemaining / startingHunger;
         hungerBar.transform.localScale = new Vector3(percent, 1, 1);
     }
@@ -274,6 +269,7 @@ public class FirstPersonController : MonoBehaviour
 
     private void HeadBob()
     {
+        // Camera bobs when player is walking
         if (isWalking)
         {
             bobTimer += Time.deltaTime * (isSprinting ? (bobSpeed + sprintSpeed) : bobSpeed);
@@ -288,6 +284,7 @@ public class FirstPersonController : MonoBehaviour
 
     private void HandleFootsteps()
     {
+        // Play footstep audio from an array of audio clips
         if (!audioSource || footstepClips.Length == 0 || !isWalking) return;
 
         footstepTimer += Time.deltaTime;
@@ -302,6 +299,7 @@ public class FirstPersonController : MonoBehaviour
 
     private void HandleBreathingLoop()
     {
+        // Play breathing audio when player is sprinting
         if (!audioSource || !sprintBreathingClip) return;
 
         if (isSprinting && !breathPlaying)
@@ -320,40 +318,55 @@ public class FirstPersonController : MonoBehaviour
 
     public void AddHunger()
     {
-        hungerRemaining = Mathf.Clamp(hungerRemaining + 50, 0, startingHunger);
+        // Add hunger, but don't go above the max
+        hungerRemaining = Mathf.Clamp(hungerRemaining + hungerAdded, 0, startingHunger);
     }
 
     public void DisablePlayer()
     {
+        // Keep the player from moving
         enableSprint = false;
         enableHunger = false;
         playerCanMove = false;
+        cameraCanMove = false;
 
-        sprintBarBG.gameObject.SetActive(false);
-        sprintBar.gameObject.SetActive(false);
-        hungerBarBG.gameObject.SetActive(false);
-        hungerBar.gameObject.SetActive(false);
+        // Make the ui inactive
+        sprintBarGroup.SetActive(false);
+        hungerBarGroup.SetActive(false);
+
+    }
+    public void ResetPlayer()
+    {
+        // Let player move again
+        enableSprint = true;
+        enableHunger = true;
+        playerCanMove = true;
+        cameraCanMove = true;
+
+        // Reset sprinting
+        isSprinting = false;
+        isSprintCooldown = false;
+        sprintRemaining = sprintDuration;
+        sprintCooldown = sprintCooldownReset;
+        sprintBarGroup.SetActive(true);
+
+        // Reset hunger
+        hungerRemaining = startingHunger;
+        hungerPenalty = false;
+        hungerBarGroup.SetActive(true);
+
+        // Reset movement
+        rb.linearVelocity = Vector3.zero;
+        rb.angularVelocity = Vector3.zero;
+        // Reset position
+        transform.position = startingPosition;
+        transform.rotation = startingRotation;
+
+
+        if (lockCursor)
+        {
+            Cursor.lockState = CursorLockMode.Locked;
+        }
+        Cursor.visible = false;
     }
 }
-
-#if UNITY_EDITOR
-[CustomEditor(typeof(FirstPersonController)), InitializeOnLoad]
-public class FirstPersonControllerEditor : Editor
-{
-    SerializedObject so;
-    FirstPersonController fpc;
-
-    private void OnEnable()
-    {
-        so = new SerializedObject(target);
-        fpc = (FirstPersonController)target;
-    }
-
-    public override void OnInspectorGUI()
-    {
-        so.Update();
-        DrawDefaultInspector();
-        so.ApplyModifiedProperties();
-    }
-}
-#endif
